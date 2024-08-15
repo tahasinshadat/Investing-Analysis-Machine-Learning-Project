@@ -1,28 +1,40 @@
-# Investing-Analysis-Machine-Learning-Project
-One of the projects I worked on during my time at Brookfield Asset Management. 
-The Model Provides Investment Analysis based on Various Factors:
-    - Sentiment Analysis
-        - News
-        - Current Price
-        - Previous Close
-        - Market Cap
-        - P/E Ratio
-    - Industry Analysis
-        - Growth Prospects
-        - Regulatory Changes
-        - Competitive Landscape
-    - Analyst Ratings
-        - Analyst Recommendations and Actions, whether they:
-            - Strong Buy
-            - Buy
-            - Hold
-            - Sell
-            - Strong Sell
-    - Q10 Analysis from specific company
-    - Quarterly Valuation Analysis from specific company
-    - Market Trends Analysis
-    - Mathematical Analysis 
-        - Linear Regression on trend lines
-        - Daily Returns
-        - Volatility
-        - Moving Averages)
+# Investing Analysis Machine Learning Project
+
+## Overview
+This project, developed during my time at Brookfield Asset Management, provides comprehensive investment analysis by evaluating various factors and metrics.
+
+## Model Capabilities
+The model offers insights into investments based on the following analyses:
+
+### Sentiment Analysis
+- **News Sentiment**
+- **Current Price**
+- **Previous Close**
+- **Market Cap**
+- **P/E Ratio**
+
+### Industry Analysis
+- **Growth Prospects**
+- **Regulatory Changes**
+- **Competitive Landscape**
+
+### Analyst Ratings
+- **Recommendations and Actions**:
+  - Strong Buy
+  - Buy
+  - Hold
+  - Sell
+  - Strong Sell
+
+### Company-Specific Analyses
+- **Q10 Analysis**
+- **Quarterly Valuation Analysis**
+
+### Market Trends Analysis
+
+### Mathematical Analysis
+- **Linear Regression on Trend Lines**
+- **Daily Returns**
+- **Volatility**
+- **Moving Averages**
+
