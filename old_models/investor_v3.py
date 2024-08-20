@@ -3,13 +3,7 @@ import boto3
 import botocore
 import os
 import json
-import base64
-import re
 import yfinance as yf
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-from sklearn.linear_model import LinearRegression
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -25,7 +19,13 @@ session = boto3.Session(
     aws_session_token=aws_session_token
 )
 
-knowledge_base_id = 'KDW4G5S26S'
+knowledge_bases = {
+    "PSA" : 'KDW4G5S26S',
+    "AMT" : "",
+    "EQIX" : "",
+    "SPG" : "",
+    "PLD" : ""
+}
 
 model_id = "anthropic.claude-3-sonnet-20240229-v1:0"
 model_arn = f'arn:aws:bedrock:us-east-1::foundation-model/{model_id}'
@@ -37,55 +37,8 @@ bedrock_agent_runtime_client = session.client("bedrock-agent-runtime", region_na
 """
 CLAUDE INVOKING FUNCTIONS
 """
-# Calls the Bedrock client to get a response from Claude with multimodal input
-def invoke_multimodal_claude(prompt, image_path, tokens=1024):
-    # Convert image to base64
-    with open(image_path, "rb") as image_file:
-        encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
-
-    # Construct the request payload
-    request_payload = {
-        "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": tokens,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "image/jpeg",
-                            "data": encoded_image
-                        }
-                    },
-                    {
-                        "type": "text",
-                        "text": prompt
-                    }
-                ]
-            }
-        ]
-    }
-    
-    try:
-        response = bedrock_client.invoke_model(
-            modelId=model_id,
-            body=json.dumps(request_payload),
-            contentType='application/json'
-        )
-        response_body = json.loads(response['body'].read().decode('utf-8'))
-        # Extract the text response from Claude
-        advice = response_body.get('content', [{}])[0].get('text', 'No advice available')
-        return advice
-    
-    except botocore.exceptions.ClientError as e:
-        print(f"An error occurred: {e}")
-        return None
-
-
 # Calls the Bedrock client to get a response from Claude using RAG with unstructured Data 
-def invoke_claude_with_RAG(prompt):
+def invoke_claude_with_RAG(ticker, prompt):
 
     # Parses Response from said function to make it more readable
     def parse_claude_response(response):
@@ -120,7 +73,7 @@ def invoke_claude_with_RAG(prompt):
             retrieveAndGenerateConfiguration={
                 'type': 'KNOWLEDGE_BASE',
                 'knowledgeBaseConfiguration': {
-                    'knowledgeBaseId': knowledge_base_id,
+                    'knowledgeBaseId': knowledge_bases[ticker],
                     'modelArn': model_arn,
                     'retrievalConfiguration': {
                         'vectorSearchConfiguration': {
@@ -138,7 +91,7 @@ def invoke_claude_with_RAG(prompt):
         return None
 
 # Calls the Bedrock client to get a response from Claude
-def invoke_claude(prompt, tokens=1024):
+def invoke_claude(prompt, tokens=200):
     try:
         response = bedrock_client.invoke_model(
             modelId=model_id,
@@ -159,8 +112,6 @@ def invoke_claude(prompt, tokens=1024):
         print(f"An error occurred: {e}")
         return None
 
-
-
 """
 STRUCTURED ANALYSIS + STRUCTURED DATA FUNCTIONS
 """
@@ -168,7 +119,7 @@ STRUCTURED ANALYSIS + STRUCTURED DATA FUNCTIONS
 def get_stock_data(ticker):
     stock = yf.Ticker(ticker)  # Fetch the stock data using yfinance
     info = stock.info  # Get current stock information
-    history = stock.history(period="1y", timeout=60)  # Get historical data
+    history = stock.history(period="1y")  # Get historical data
     
     # Prepare the response
     response = {
@@ -176,22 +127,11 @@ def get_stock_data(ticker):
         "previous_close": info.get("regularMarketPreviousClose", "N/A"),
         "market_cap": info.get("marketCap", "N/A"),
         "pe_ratio": info.get("forwardEps", "N/A"),
-        "historical_data": history # keep as dataframe for matplotlib charting
+        "historical_data": history.to_dict()  # Convert historical data to dictionary
     }
 
     return response
 
-# Plots stock data
-def plot_stock_data(history, ticker):
-    plt.figure(figsize=(10, 6))
-    plt.plot(history.index, history['Close'], label="Close Price")
-    plt.title(f"{ticker} Stock Price - Last 1 Year")
-    plt.xlabel("Date")
-    plt.ylabel("Close Price")
-    plt.grid(True)
-    plt.legend()
-    plt.savefig(f"charts/{ticker}_stock_history.png", format="png", dpi=300) # Save the chart to a file that can be fed into Claude
-    # plt.show()
 
 # Gets sentiment analysis about the stock
 def get_sentiment_analysis(stock_data, ticker):
@@ -205,6 +145,7 @@ def get_sentiment_analysis(stock_data, ticker):
     )
     return invoke_claude(prompt)
 
+
 # Gets industry analysis about the stock
 def get_industry_analysis(stock_data, ticker):
     stock = yf.Ticker(ticker)
@@ -216,6 +157,7 @@ def get_industry_analysis(stock_data, ticker):
         f"Consider trends, growth prospects, regulatory changes, and the competitive landscape."
     )
     return invoke_claude(prompt)
+
 
 # Gets analyst ratings about the stock
 def get_analyst_ratings(ticker):
@@ -256,58 +198,18 @@ UNSTRUCTURED ANALYSIS FUNCTIONS
 # Analyze 10-Q reports using unstructured data
 def get_10Q_analysis(ticker):
     prompt = f"Summarize and analyze the latest 10-Q reports for {ticker}. Focus on key financial metrics, risks, and opportunities."
-    return invoke_claude_with_RAG(prompt)
+    return invoke_claude_with_RAG(ticker, prompt)
 
 # Analyze quarterly valuation reports using unstructured data
 def get_quarterly_valuation_analysis(ticker):
     prompt = f"Analyze the quarterly valuation reports for {ticker}. Highlight trends in revenue, earnings, and growth prospects."
-    return invoke_claude_with_RAG(prompt)
+    return invoke_claude_with_RAG(ticker, prompt)
 
 # Any other relevant unstructured analysis functions
 def get_market_trends_analysis(ticker):
-    prompt = f"Provide an in-depth analysis of any recent news, management discussions, and market trends for the stock / ticker: {ticker}."
-    return invoke_claude(prompt)
+    prompt = f"Provide an in-depth analysis of any recent news, management discussions, and market trends for {ticker}."
+    return invoke_claude_with_RAG(ticker, prompt)
 
-
-
-"""
-Own Mathwmatical analysis on stock history
-"""
-def perform_mathematical_analysis(history):
-
-    if not isinstance(history, pd.DataFrame) or 'Close' not in history.columns:
-        raise ValueError("Invalid history DataFrame")
-
-    # Moving Averages
-    history['MA_20'] = history['Close'].rolling(window=20).mean()
-    history['MA_50'] = history['Close'].rolling(window=50).mean()
-
-    # Volatility
-    history['Daily_Return'] = history['Close'].pct_change() # Get daily returns
-    volatility = history['Daily_Return'].std() * np.sqrt(252)  # Annualized volatility
-
-    # Linear Regression for Trend Lines
-    history = history.dropna()  # Remove NaN values generated by rolling window
-    X = np.arange(len(history)).reshape(-1, 1)  # Days as feature
-    y = history['Close'].values  # Prices as target
-    
-    model = LinearRegression()
-    model.fit(X, y)
-    trend_slope = model.coef_[0]
-    trend_intercept = model.intercept_
-
-    analysis_results = {
-        "moving_averages": {
-            "20-day": history['MA_20'].iloc[-1],  # Latest 20-day MA
-            "50-day": history['MA_50'].iloc[-1]   # Latest 50-day MA
-        },
-        "volatility": volatility,
-        "trend_line_slope": trend_slope,
-        "trend_line_intercept": trend_intercept,
-        "latest_close": history['Close'].iloc[-1]
-    }
-    
-    return analysis_results
 
 
 """
@@ -338,65 +240,22 @@ def synthesize_data_and_analyses(structured_data, unstructured_data):
 
 
 """
-
-Provides Investment Analysis based on Various Factors:
-    - Sentiment Analysis
-        - News
-        - Current Price
-        - Previous Close
-        - Market Cap
-        - P/E Ratio
-    - Industry Analysis
-        - Growth Prospects
-        - Regulatory Changes
-        - Competitive Landscape
-    - Analyst Ratings
-        - Analyst Recommendations and Actions, whether they:
-            - Strong Buy
-            - Buy
-            - Hold
-            - Sell
-            - Strong Sell
-    - Q10 Analysis from specific company
-    - Quarterly Valuation Analysis from specific company
-    - Market Trends Analysis
-    - Mathematical Analysis 
-        - Linear Regression on trend lines
-        - Daily Returns
-        - Volatility
-        - Moving Averages
-
+Provides investment analysis based on various factors
 """
-# Creates final output prompt
-def get_final_analysis(ticker, synthesized_insights, math_analysis):
+def get_final_analysis(ticker, synthesized_insights):
     prompt = (
         f"Ticker: {ticker}\n\n"
         f"Synthesized Insights:\n{synthesized_insights}\n\n"
-        f"Mathematical Analysis:\n"
-        f"Latest Close Price: {math_analysis['latest_close']}\n"
-        f"20-day Moving Average: {math_analysis['moving_averages']['20-day']}\n"
-        f"50-day Moving Average: {math_analysis['moving_averages']['50-day']}\n"
-        f"Volatility (Annualized): {math_analysis['volatility']}\n"
-        f"Trend Line Slope: {math_analysis['trend_line_slope']}\n\n"
-        f"Based on the provided data, analyses, and stock history visualization provide a comprehensive investment recommendation for {ticker}. "
+        f"Based on the provided data and analyses, provide a comprehensive investment recommendation for {ticker}. "
         f"Consider the company's financial strength, growth prospects, competitive position, and potential risks. "
         f"Provide a clear and concise recommendation on whether to buy, hold, or sell the stock, along with supporting rationale, including citations and/or references."
     )
-    return invoke_multimodal_claude(prompt, image_path=f"charts/{ticker}_stock_history.png", tokens=1024)
+    return invoke_claude(prompt, tokens=500)
 
-# Ties all analyses, calculations, & informaion to be inputted into final output
+# Update the get_investing_advice_for function accordingly
 def get_investing_advice_for(ticker, analysis_walkthrough=False):
     # Structured Data Analysis
     stock_data = get_stock_data(ticker)
-
-    # Generate the stock plot image using the "histroical_data" data frame
-    plot_stock_data(stock_data['historical_data'], ticker)
-
-    # Calculate moving averages, volatility, daily returns, and trends
-    mathematical_analysis = perform_mathematical_analysis(stock_data['historical_data'])
-
-    stock_data['historical_data'] = stock_data['historical_data'].to_dict() # Convert 'historical_data' to a dictionary
-
     sentiment_analysis = get_sentiment_analysis(stock_data, ticker)
     industry_analysis = get_industry_analysis(stock_data, ticker)
     analyst_ratings = get_analyst_ratings(ticker)
@@ -412,8 +271,7 @@ def get_investing_advice_for(ticker, analysis_walkthrough=False):
         synthesize_data_and_analyses(
             structured_data=(stock_data, sentiment_analysis, industry_analysis, analyst_ratings), 
             unstructured_data=(q10_analysis, quarterly_valuation_analysis, market_trends_analysis)
-        ),
-        mathematical_analysis
+        )
     )
 
     if analysis_walkthrough:
@@ -438,10 +296,13 @@ def get_investing_advice_for(ticker, analysis_walkthrough=False):
     return final_analysis
 
 
+test_ticker = "PSA"
+print(get_investing_advice_for(test_ticker, True))
 
-# test_ticker = "PSA"
-# print(get_investing_advice_for(test_ticker, True))
 
-# testing
-# plot_stock_data(get_stock_data(test_ticker)['historical_data'], test_ticker)
-# print(invoke_multimodal_claude("given the image, explain what it is", "PSA_stock_history.png"))
+
+
+#%% Provides stock data given a specific ticker from yahoo finance
+# print(get_stock_data(test_ticker))
+
+# %%
